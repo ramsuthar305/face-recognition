@@ -1,0 +1,157 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Images and Videos
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.tif
+*.svg
+*.webp
+*.ico
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+*.webm
+*.mkv
+*.m4v
+*.3gp
+
+# Image directories
+assets/faces/
+assets/*.jpg
+assets/*.jpeg
+assets/*.png
+assets/*.mp4
+assets/*.mov
+assets/*.avi
+images/
+photos/
+pictures/
+
+# Model weights (keep structure but ignore actual weight files)
+weights/*.onnx
+weights/*.pth
+weights/*.pt
+weights/*.h5
+weights/*.pb
+*.onnx
+*.pth
+*.pt
+*.h5
+*.pb
+
+# Database files
+database/face_database/
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+app.log
+
+# Output files
+output_*.mp4
+cctv_output.mp4
+detections.json
+output_video.mp4
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+*.temp
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Custom
+test_images/
+test_videos/
+uploads/
+downloads/
+backup/

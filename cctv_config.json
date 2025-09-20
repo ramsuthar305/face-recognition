@@ -1,0 +1,56 @@
+{
+  "camera_sources": {
+    "webcam_0": "0",
+    "webcam_1": "1",
+    "ip_camera_generic": "http://192.168.1.100:8080/video",
+    "rtsp_hikvision": "rtsp://admin:password@192.168.1.100:554/Streaming/Channels/101",
+    "rtsp_dahua": "rtsp://admin:password@192.168.1.100:554/cam/realmonitor?channel=1&subtype=0",
+    "rtsp_axis": "rtsp://admin:password@192.168.1.100:554/axis-media/media.amp",
+    "rtsp_foscam": "rtsp://admin:password@192.168.1.100:554/videoMain",
+    "http_mjpeg": "http://192.168.1.100:8080/mjpeg",
+    "youtube_live": "https://www.youtube.com/watch?v=LIVE_STREAM_ID"
+  },
+  
+  "common_rtsp_formats": {
+    "hikvision_main": "rtsp://username:password@ip:554/Streaming/Channels/101",
+    "hikvision_sub": "rtsp://username:password@ip:554/Streaming/Channels/102",
+    "dahua_main": "rtsp://username:password@ip:554/cam/realmonitor?channel=1&subtype=0",
+    "dahua_sub": "rtsp://username:password@ip:554/cam/realmonitor?channel=1&subtype=1",
+    "axis": "rtsp://username:password@ip:554/axis-media/media.amp",
+    "foscam": "rtsp://username:password@ip:554/videoMain",
+    "generic_rtsp": "rtsp://username:password@ip:554/stream1"
+  },
+  
+  "mobile_apps": {
+    "droidcam": "http://192.168.1.XXX:4747/video",
+    "ip_webcam": "http://192.168.1.XXX:8080/video",
+    "ivcam": "Use iVCam software to create virtual webcam"
+  },
+  
+  "recommended_settings": {
+    "indoor_cctv": {
+      "confidence_thresh": 0.4,
+      "similarity_thresh": 0.5,
+      "frame_skip": 2,
+      "max_faces": 10
+    },
+    "outdoor_cctv": {
+      "confidence_thresh": 0.6,
+      "similarity_thresh": 0.4,
+      "frame_skip": 3,
+      "max_faces": 5
+    },
+    "high_traffic": {
+      "confidence_thresh": 0.5,
+      "similarity_thresh": 0.4,
+      "frame_skip": 5,
+      "max_faces": 20
+    },
+    "security_checkpoint": {
+      "confidence_thresh": 0.3,
+      "similarity_thresh": 0.6,
+      "frame_skip": 0,
+      "max_faces": 3
+    }
+  }
+}
