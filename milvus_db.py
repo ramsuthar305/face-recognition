@@ -1,6 +1,7 @@
 import os
 import logging
 import numpy as np
+import threading
 from typing import List, Tuple, Optional, Dict, Any
 from pymilvus import (
     connections,
@@ -13,6 +14,7 @@ from pymilvus import (
 )
 import json
 from datetime import datetime
+from contextlib import contextmanager
 
 class MilvusFaceDatabase:
     """
@@ -26,9 +28,10 @@ class MilvusFaceDatabase:
                  port: int = 19530,
                  user: str = "",
                  password: str = "",
-                 max_workers: int = 4):
+                 max_workers: int = 4,
+                 connection_id: str = None):
         """
-        Initialize Milvus face database
+        Initialize Milvus face database with connection pooling support
         
         Args:
             collection_name: Name of the Milvus collection
@@ -38,6 +41,7 @@ class MilvusFaceDatabase:
             user: Username for authentication
             password: Password for authentication
             max_workers: Number of worker threads (for compatibility)
+            connection_id: Unique identifier for this connection instance
         """
         self.collection_name = collection_name
         self.embedding_size = embedding_size
@@ -46,8 +50,10 @@ class MilvusFaceDatabase:
         self.user = user
         self.password = password
         self.max_workers = max_workers
+        self.connection_id = connection_id or f"milvus_{id(self)}"
         self.collection = None
         self._connected = False
+        self._lock = threading.RLock()
         
         # Connect to Milvus
         self._connect()
@@ -55,43 +61,54 @@ class MilvusFaceDatabase:
         # Create collection if it doesn't exist
         self._create_collection()
         
-        logging.info(f"Milvus face database initialized: {collection_name}")
+        logging.info(f"Milvus face database initialized: {collection_name} (connection: {self.connection_id})")
 
     def _connect(self):
-        """Connect to Milvus server with authentication"""
-        try:
-            # Prepare connection parameters
-            conn_params = {
-                "host": self.host,
-                "port": self.port,
-                "timeout": 30,  # 30 second timeout
-                "secure": True if "zillizcloud.com" in self.host else False  # Use TLS for cloud
-            }
-            
-            # Add authentication if provided
-            if self.user and self.password:
-                conn_params["user"] = self.user
-                conn_params["password"] = self.password
-                logging.info(f"Connecting to Milvus with authentication: {self.user}@{self.host}:{self.port}")
-            else:
-                logging.info(f"Connecting to Milvus without authentication: {self.host}:{self.port}")
-            
-            # Add token-based auth for Zilliz Cloud if needed
-            if "zillizcloud.com" in self.host and self.user and self.password:
-                # For Zilliz Cloud, try token format: user:password
-                conn_params["token"] = f"{self.user}:{self.password}"
-                # Remove user/password as token takes precedence
-                del conn_params["user"]
-                del conn_params["password"]
-                logging.info(f"Using token authentication for Zilliz Cloud")
-            
-            connections.connect("default", **conn_params)
-            self._connected = True
-            logging.info(f"Successfully connected to Milvus at {self.host}:{self.port}")
-        except Exception as e:
-            logging.error(f"Failed to connect to Milvus: {e}")
-            logging.error(f"Connection params: host={self.host}, port={self.port}, user={self.user}")
-            raise
+        """Connect to Milvus server with authentication and connection pooling"""
+        with self._lock:
+            try:
+                # Check if already connected
+                if self._connected:
+                    return
+                
+                # Prepare connection parameters with connection pooling
+                conn_params = {
+                    "host": self.host,
+                    "port": self.port,
+                    "timeout": 30,  # 30 second timeout
+                    "secure": True if "zillizcloud.com" in self.host else False,  # Use TLS for cloud
+                    "pool_size": 10,  # Connection pool size
+                    "max_retry": 3,   # Max retry attempts
+                    "retry_delay": 1  # Retry delay in seconds
+                }
+                
+                # Add authentication if provided
+                if self.user and self.password:
+                    conn_params["user"] = self.user
+                    conn_params["password"] = self.password
+                    logging.info(f"Connecting to Milvus with authentication: {self.user}@{self.host}:{self.port}")
+                else:
+                    logging.info(f"Connecting to Milvus without authentication: {self.host}:{self.port}")
+                
+                # Add token-based auth for Zilliz Cloud if needed
+                if "zillizcloud.com" in self.host and self.user and self.password:
+                    # For Zilliz Cloud, try token format: user:password
+                    conn_params["token"] = f"{self.user}:{self.password}"
+                    # Remove user/password as token takes precedence
+                    del conn_params["user"]
+                    del conn_params["password"]
+                    logging.info(f"Using token authentication for Zilliz Cloud")
+                
+                # Use unique connection alias for each instance
+                connections.connect(self.connection_id, **conn_params)
+                self._connected = True
+                logging.info(f"Successfully connected to Milvus at {self.host}:{self.port} (connection: {self.connection_id})")
+                
+            except Exception as e:
+                logging.error(f"Failed to connect to Milvus: {e}")
+                logging.error(f"Connection params: host={self.host}, port={self.port}, user={self.user}")
+                self._connected = False
+                raise
 
     def _create_collection(self):
         """Create the face embeddings collection"""
@@ -131,6 +148,40 @@ class MilvusFaceDatabase:
         except Exception as e:
             logging.error(f"Failed to create collection: {e}")
             raise
+    
+    def close(self):
+        """Close the Milvus connection"""
+        with self._lock:
+            if self._connected:
+                try:
+                    connections.disconnect(self.connection_id)
+                    self._connected = False
+                    logging.info(f"Milvus connection closed: {self.connection_id}")
+                except Exception as e:
+                    logging.error(f"Error closing Milvus connection: {e}")
+    
+    def is_healthy(self) -> bool:
+        """Check if the connection is healthy"""
+        try:
+            if not self._connected:
+                return False
+            
+            # Try to get collection info as a health check
+            if self.collection:
+                self.collection.load()
+                return True
+            return False
+        except Exception as e:
+            logging.warning(f"Health check failed for connection {self.connection_id}: {e}")
+            return False
+    
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit"""
+        self.close()
 
     def add_face(self, embedding: np.ndarray, name: str, image_path: str = "", metadata: Dict = None):
         """

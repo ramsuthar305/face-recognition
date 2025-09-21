@@ -11,3 +11,5 @@ boto3
 bleach
 python-dotenv
 scikit-learn
+gunicorn
+gevent
