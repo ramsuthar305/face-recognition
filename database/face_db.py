@@ -10,7 +10,7 @@ from queue import Queue
 
 
 class FaceDatabase:
-    def __init__(self, embedding_size: int = 512, db_path: str = "./database/face_database", max_workers: int = 4) -> None:
+    def __init__(self, embedding_size: int = 1024, db_path: str = "./database/face_database", max_workers: int = 4) -> None:
         """
         Initialize the face database with thread support.
 

@@ -6,3 +6,8 @@ scikit-image
 faiss-cpu
 flask
 werkzeug
+pymilvus
+boto3
+bleach
+python-dotenv
+scikit-learn

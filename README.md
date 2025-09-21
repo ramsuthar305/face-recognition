@@ -27,15 +27,67 @@ sh download.sh
 
 ## Running the Server
 
+### Option 1: With FAISS Database (Default)
 ```bash
 # Activate virtual environment
 source venv/bin/activate
 
-# Start API server
+# Start API server with FAISS
 python api.py
 ```
 
+### Option 2: With Milvus Vector Database (Recommended for 100K+ faces)
+```bash
+# 1. Setup Milvus with Podman
+./setup_milvus.sh
+
+# 2. Start API server with Milvus
+source venv/bin/activate
+python api.py --use-milvus
+```
+
 Server starts at: `http://localhost:8080`
+
+## Milvus Setup (Recommended for Large Scale)
+
+Milvus provides better scalability and performance for large face databases (100K+ faces).
+
+### Prerequisites
+- Podman installed (`brew install podman` on macOS)
+- At least 4GB RAM available
+
+### Setup Steps
+```bash
+# Run the setup script
+./setup_milvus.sh
+
+# This will:
+# - Install podman-compose
+# - Start Milvus, etcd, and MinIO containers
+# - Install pymilvus Python package
+# - Verify services are running
+```
+
+### Milvus Services
+- **Milvus**: `localhost:19530` (vector database)
+- **Milvus Web UI**: `localhost:9091` (health check)
+- **MinIO**: `localhost:9000` (object storage)
+- **MinIO Console**: `localhost:9001` (admin interface)
+
+### Managing Milvus
+```bash
+# Check status
+podman-compose ps
+
+# View logs
+podman-compose logs milvus
+
+# Stop services
+podman-compose down
+
+# Restart services
+podman-compose up -d
+```
 
 ## API Endpoints
 
