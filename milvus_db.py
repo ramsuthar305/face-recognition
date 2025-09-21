@@ -113,9 +113,13 @@ class MilvusFaceDatabase:
     def _create_collection(self):
         """Create the face embeddings collection"""
         try:
-            # Check if collection exists
-            if utility.has_collection(self.collection_name):
-                self.collection = Collection(self.collection_name)
+            # Ensure we're connected before creating collection
+            if not self._connected:
+                self._connect()
+            
+            # Check if collection exists using the correct connection alias
+            if utility.has_collection(self.collection_name, using=self.connection_id):
+                self.collection = Collection(self.collection_name, using=self.connection_id)
                 logging.info(f"Loaded existing collection: {self.collection_name}")
                 return
             
@@ -132,7 +136,7 @@ class MilvusFaceDatabase:
             schema = CollectionSchema(fields, "Face embeddings collection")
             
             # Create collection
-            self.collection = Collection(self.collection_name, schema)
+            self.collection = Collection(self.collection_name, schema, using=self.connection_id)
             
             # Create index for vector search
             index_params = {

@@ -16,10 +16,10 @@ backlog = int(os.getenv('GUNICORN_BACKLOG', 2048))
 
 # Worker processes - optimized for CPU and I/O bound tasks
 cpu_count = multiprocessing.cpu_count()
-workers = int(os.getenv('GUNICORN_WORKERS', cpu_count * 2 + 1))
+workers = int(os.getenv('GUNICORN_WORKERS', cpu_count * 2 -1))
 
-# Use async workers for better concurrency with I/O operations
-worker_class = os.getenv('GUNICORN_WORKER_CLASS', 'gevent')
+# Use sync workers for stable database connections
+worker_class = os.getenv('GUNICORN_WORKER_CLASS', 'sync')
 
 # Connection pooling settings
 worker_connections = int(os.getenv('GUNICORN_WORKER_CONNECTIONS', 2000))
@@ -31,9 +31,9 @@ timeout = int(os.getenv('GUNICORN_TIMEOUT', 180))  # 3 minutes for face processi
 keepalive = int(os.getenv('GUNICORN_KEEPALIVE', 5))
 graceful_timeout = int(os.getenv('GUNICORN_GRACEFUL_TIMEOUT', 60))
 
-# Memory management
-preload_app = True
-worker_tmp_dir = "/dev/shm"  # Use memory for temporary files (if available)
+# Memory management - disable preload for database connections
+preload_app = False  # Set to False for database connections like Milvus
+# worker_tmp_dir = "/dev/shm"  # Commented out - /dev/shm doesn't exist on macOS
 
 # Connection pool settings
 max_keepalive_requests = int(os.getenv('GUNICORN_MAX_KEEPALIVE_REQUESTS', 100))
@@ -56,7 +56,7 @@ limit_request_field_size = 8190
 limit_conn = int(os.getenv('GUNICORN_LIMIT_CONN', 10000))
 
 # Thread pool settings (for sync workers)
-threads = int(os.getenv('GUNICORN_THREADS', 4)) if worker_class == 'sync' else None
+threads = int(os.getenv('GUNICORN_THREADS', 4)) if worker_class == 'sync' else 1
 
 # SSL (if needed)
 # keyfile = "/path/to/keyfile"

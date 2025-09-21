@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(__file__))
 
 # Load environment variables
-load_dotenv('config.env')
+load_dotenv('.env')
 
 # Configure logging for production
 logging.basicConfig(
@@ -33,16 +33,13 @@ def create_app():
         # Import after setting up path and environment
         from api import app, initialize_models
         
-        # Get configuration from environment
-        use_milvus = os.getenv('USE_MILVUS', 'true').lower() == 'true'
-        
-        # Initialize models and database
-        if not initialize_models(use_milvus=use_milvus):
+        # Initialize models and database (always uses Milvus)
+        if not initialize_models():
             logging.error("Failed to initialize models for production")
             raise RuntimeError("Model initialization failed")
         
         logging.info("Face Recognition API initialized for production")
-        logging.info(f"Database backend: {'Milvus' if use_milvus else 'FAISS'}")
+        logging.info("Database backend: Milvus")
         
         return app
         
@@ -65,4 +62,5 @@ if __name__ == "__main__":
     print(f"Port: {port}")
     print(f"Debug: {debug}")
     
-    application.run(host='0.0.0.0', port=port, debug=debug)
+    # Force debug=False to prevent double initialization
+    application.run(host='0.0.0.0', port=port, debug=False)
