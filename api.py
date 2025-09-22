@@ -1019,76 +1019,94 @@ def flush_database():
             'error': f'Failed to flush database: {str(e)}'
         }), 500
 
-@app.route('/delete_record/<identifier>', methods=['DELETE'])
-def delete_record(identifier):
+@app.route('/delete_record/<person_id>', methods=['DELETE'])
+def delete_record(person_id):
     """
     Delete a specific person record from both database and DigitalOcean Spaces
     
-    This endpoint provides comprehensive deletion with detailed feedback
+    This endpoint accepts just the person ID (e.g., "12345") and finds the matching identifier
     
     Args:
-        identifier: Person identifier (e.g., "John_Doe_12345")
+        person_id: Person ID (e.g., "12345") - will search for identifiers ending with "_12345"
     
     Returns:
         - JSON response with detailed deletion results
         - Information about what was deleted from database and Spaces
     """
     try:
-        logging.info(f"Starting deletion process for identifier: {identifier}")
+        logging.info(f"Starting deletion process for person ID: {person_id}")
         
-        # Check if person exists in database
-        person_exists = False
+        # Find matching identifier(s) that end with the person_id
+        matching_identifiers = []
         initial_db_count = 0
         
         try:
             # Get initial count from database
             initial_db_count = face_db.index.ntotal
             
-            # Check if identifier exists in metadata
+            # Search for identifiers that end with the person_id
             if hasattr(face_db, 'metadata'):
-                person_exists = identifier in face_db.metadata
+                for identifier in face_db.metadata:
+                    if identifier.endswith(f"_{person_id}"):
+                        matching_identifiers.append(identifier)
                 
         except Exception as e:
             logging.warning(f"Could not check database for person existence: {e}")
         
-        if not person_exists:
-            return jsonify({
-                'success': False,
+        if not matching_identifiers:
+                return jsonify({
+                    'success': False,
                 'response_code': 'FIE5003',
-                'message': 'Person not found in database',
-                'error': f'Person {identifier} not found in database',
-                'identifier': identifier,
+                    'message': 'Person not found in database',
+                'error': f'No person found with ID {person_id}',
+                'person_id': person_id,
                 'database_deleted': 0,
                 'spaces_deleted': 0
-            }), 404
+                }), 404
+            
+        # If multiple matches, log warning but proceed with deletion
+        if len(matching_identifiers) > 1:
+            logging.warning(f"Multiple identifiers found for ID {person_id}: {matching_identifiers}")
+            logging.info(f"Will delete all {len(matching_identifiers)} matching identifiers")
         
-        # Delete from Milvus database
+        logging.info(f"Found matching identifier(s): {matching_identifiers}")
+        
+        # Delete from Milvus database - handle all matching identifiers
         db_deleted_count = 0
-        db_success = False
+        db_success = True
+        db_deletion_details = {}
         
-        try:
-            db_deleted_count = face_db.delete_person(identifier)
-            db_success = True
-            logging.info(f"Successfully deleted {db_deleted_count} records from database for {identifier}")
-        except Exception as e:
-            logging.error(f"Failed to delete from database: {e}")
-            db_success = False
+        for identifier_to_delete in matching_identifiers:
+            try:
+                deleted_count = face_db.delete_person(identifier_to_delete)
+                db_deleted_count += deleted_count
+                db_deletion_details[identifier_to_delete] = deleted_count
+                logging.info(f"Successfully deleted {deleted_count} records from database for {identifier_to_delete}")
+            except Exception as e:
+                logging.error(f"Failed to delete {identifier_to_delete} from database: {e}")
+                db_success = False
+                db_deletion_details[identifier_to_delete] = 0
         
-        # Delete from DigitalOcean Spaces
+        # Delete from DigitalOcean Spaces - handle all matching identifiers
         spaces_deleted_count = 0
-        spaces_success = False
+        spaces_success = True
         spaces_details = {}
         
         if spaces_manager:
-            try:
-                spaces_result = spaces_manager.delete_images(identifier)
-                spaces_success = spaces_result.get('success', False)
-                spaces_deleted_count = spaces_result.get('deleted_count', 0)
-                spaces_details = spaces_result
-                logging.info(f"Spaces deletion result: {spaces_result}")
-            except Exception as e:
-                logging.error(f"Failed to delete from Spaces: {e}")
-                spaces_success = False
+            for identifier_to_delete in matching_identifiers:
+                try:
+                    spaces_result = spaces_manager.delete_images(identifier_to_delete)
+                    if spaces_result.get('success', False):
+                        spaces_deleted_count += spaces_result.get('deleted_count', 0)
+                        spaces_details[identifier_to_delete] = spaces_result
+                        logging.info(f"Spaces deletion result for {identifier_to_delete}: {spaces_result}")
+                    else:
+                        spaces_success = False
+                        spaces_details[identifier_to_delete] = spaces_result
+                except Exception as e:
+                    logging.error(f"Failed to delete {identifier_to_delete} from Spaces: {e}")
+                    spaces_success = False
+                    spaces_details[identifier_to_delete] = {'success': False, 'error': str(e)}
         else:
             logging.warning("Spaces manager not available - skipping Spaces deletion")
         
@@ -1107,19 +1125,21 @@ def delete_record(identifier):
             'success': overall_success,
             'response_code': 'FIS5002' if overall_success else 'FIE5004',
             'message': 'Record deletion completed successfully' if overall_success else 'Record deletion completed with errors',
-            'identifier': identifier,
+            'person_id': person_id,
+            'matching_identifiers': matching_identifiers,
             'deletion_summary': {
                 'database': {
                     'success': db_success,
                     'deleted_count': db_deleted_count,
                     'initial_count': initial_db_count,
-                    'final_count': final_db_count
+                    'final_count': final_db_count,
+                    'per_identifier': db_deletion_details
                 },
                 'spaces': {
                     'success': spaces_success,
                     'deleted_count': spaces_deleted_count,
                     'manager_available': spaces_manager is not None,
-                    'details': spaces_details
+                    'per_identifier': spaces_details
                 }
             },
             'total_deleted': {
@@ -1141,18 +1161,18 @@ def delete_record(identifier):
         
         status_code = 200 if overall_success else 207  # 207 Multi-Status for partial success
         
-        logging.info(f"Deletion completed for {identifier}: DB={db_deleted_count}, Spaces={spaces_deleted_count}")
+        logging.info(f"Deletion completed for person ID {person_id}: DB={db_deleted_count}, Spaces={spaces_deleted_count}")
         
         return jsonify(response), status_code
         
     except Exception as e:
-        logging.error(f"Unexpected error during deletion of {identifier}: {e}")
+        logging.error(f"Unexpected error during deletion of person ID {person_id}: {e}")
         return jsonify({
             'success': False,
             'response_code': 'FIE5005',
             'message': 'Unexpected error during deletion',
             'error': f'Deletion failed: {str(e)}',
-            'identifier': identifier
+            'person_id': person_id
         }), 500
 
 @app.route('/delete_records', methods=['POST'])
@@ -1162,11 +1182,11 @@ def delete_records():
     
     Expected JSON payload:
     {
-        "identifiers": ["person1_id", "person2_id", "person3_id"]
+        "person_ids": ["12345", "67890", "11111"]
     }
     
     Returns:
-        - JSON response with detailed deletion results for each identifier
+        - JSON response with detailed deletion results for each person ID
     """
     try:
         # Validate request
@@ -1180,93 +1200,106 @@ def delete_records():
         
         data = request.get_json()
         
-        if 'identifiers' not in data:
+        if 'person_ids' not in data:
             return jsonify({
                 'success': False,
                 'response_code': 'FIE5007',
-                'message': 'Missing required field: identifiers',
-                'error': 'identifiers array is required'
+                'message': 'Missing required field: person_ids',
+                'error': 'person_ids array is required'
             }), 400
         
-        identifiers = data['identifiers']
+        person_ids = data['person_ids']
         
-        if not isinstance(identifiers, list):
+        if not isinstance(person_ids, list):
             return jsonify({
                 'success': False,
                 'response_code': 'FIE5008',
-                'message': 'Invalid identifiers format',
-                'error': 'identifiers must be an array'
+                'message': 'Invalid person_ids format',
+                'error': 'person_ids must be an array'
             }), 400
         
-        if not identifiers:
+        if not person_ids:
             return jsonify({
                 'success': False,
                 'response_code': 'FIE5009',
-                'message': 'Empty identifiers list',
-                'error': 'At least one identifier must be provided'
+                'message': 'Empty person_ids list',
+                'error': 'At least one person ID must be provided'
             }), 400
         
-        if len(identifiers) > 100:  # Limit bulk operations
+        if len(person_ids) > 100:  # Limit bulk operations
             return jsonify({
                 'success': False,
                 'response_code': 'FIE5010',
-                'message': 'Too many identifiers',
-                'error': 'Maximum 100 identifiers allowed per request'
+                'message': 'Too many person IDs',
+                'error': 'Maximum 100 person IDs allowed per request'
             }), 400
         
-        logging.info(f"Starting bulk deletion for {len(identifiers)} identifiers: {identifiers}")
+        logging.info(f"Starting bulk deletion for {len(person_ids)} person IDs: {person_ids}")
         
-        # Process each identifier
+        # Process each person ID
         results = []
         total_db_deleted = 0
         total_spaces_deleted = 0
         successful_deletions = 0
         failed_deletions = 0
         
-        for identifier in identifiers:
+        for person_id in person_ids:
             try:
-                # Check if person exists
-                person_exists = False
+                # Find matching identifiers for this person ID
+                matching_identifiers = []
                 if hasattr(face_db, 'metadata'):
-                    person_exists = identifier in face_db.metadata
+                    for identifier in face_db.metadata:
+                        if identifier.endswith(f"_{person_id}"):
+                            matching_identifiers.append(identifier)
                 
-                if not person_exists:
+                if not matching_identifiers:
                     results.append({
-                        'identifier': identifier,
+                        'person_id': person_id,
                         'success': False,
                         'error': 'Person not found in database',
+                        'matching_identifiers': [],
                         'database_deleted': 0,
                         'spaces_deleted': 0
                     })
                     failed_deletions += 1
                     continue
                 
-                # Delete from database
+                # Delete from database - handle all matching identifiers
                 db_deleted = 0
-                db_success = False
+                db_success = True
+                db_details = {}
                 
-                try:
-                    db_deleted = face_db.delete_person(identifier)
-                    db_success = True
-                    total_db_deleted += db_deleted
-                except Exception as e:
-                    logging.error(f"Failed to delete {identifier} from database: {e}")
-                    db_success = False
+                for identifier in matching_identifiers:
+                    try:
+                        deleted_count = face_db.delete_person(identifier)
+                        db_deleted += deleted_count
+                        db_details[identifier] = deleted_count
+                        total_db_deleted += deleted_count
+                    except Exception as e:
+                        logging.error(f"Failed to delete {identifier} from database: {e}")
+                        db_success = False
+                        db_details[identifier] = 0
                 
-                # Delete from Spaces
+                # Delete from Spaces - handle all matching identifiers
                 spaces_deleted = 0
-                spaces_success = False
+                spaces_success = True
+                spaces_details = {}
                 
                 if spaces_manager:
-                    try:
-                        spaces_result = spaces_manager.delete_images(identifier)
-                        spaces_success = spaces_result.get('success', False)
-                        spaces_deleted = spaces_result.get('deleted_count', 0)
-                        if spaces_success:
-                            total_spaces_deleted += spaces_deleted
-                    except Exception as e:
-                        logging.error(f"Failed to delete {identifier} from Spaces: {e}")
-                        spaces_success = False
+                    for identifier in matching_identifiers:
+                        try:
+                            spaces_result = spaces_manager.delete_images(identifier)
+                            if spaces_result.get('success', False):
+                                spaces_deleted += spaces_result.get('deleted_count', 0)
+                                total_spaces_deleted += spaces_result.get('deleted_count', 0)
+                                spaces_details[identifier] = spaces_result
+                            else:
+                                spaces_success = False
+                                spaces_details[identifier] = spaces_result
+                        except Exception as e:
+                            logging.error(f"Failed to delete {identifier} from Spaces: {e}")
+                            spaces_success = False
+                            spaces_details[identifier] = {'success': False, 'error': str(e)}
                 else:
                     spaces_success = True  # No Spaces manager, consider success
                 
@@ -1279,20 +1312,24 @@ def delete_records():
                     failed_deletions += 1
                 
                 results.append({
-                    'identifier': identifier,
+                    'person_id': person_id,
                     'success': individual_success,
+                    'matching_identifiers': matching_identifiers,
                     'database_deleted': db_deleted,
                     'spaces_deleted': spaces_deleted,
                     'database_success': db_success,
-                    'spaces_success': spaces_success
+                    'spaces_success': spaces_success,
+                    'database_details': db_details,
+                    'spaces_details': spaces_details
                 })
                 
             except Exception as e:
-                logging.error(f"Error processing identifier {identifier}: {e}")
+                logging.error(f"Error processing person ID {person_id}: {e}")
                 results.append({
-                    'identifier': identifier,
+                    'person_id': person_id,
                     'success': False,
                     'error': str(e),
+                    'matching_identifiers': [],
                     'database_deleted': 0,
                     'spaces_deleted': 0
                 })
@@ -1306,7 +1343,7 @@ def delete_records():
             'response_code': 'FIS5003' if overall_success else 'FIE5011',
             'message': f'Bulk deletion completed: {successful_deletions} successful, {failed_deletions} failed',
             'summary': {
-                'total_requested': len(identifiers),
+                'total_requested': len(person_ids),
                 'successful_deletions': successful_deletions,
                 'failed_deletions': failed_deletions,
                 'total_database_deleted': total_db_deleted,
@@ -1318,7 +1355,7 @@ def delete_records():
         
         status_code = 200 if overall_success else 207  # 207 Multi-Status for partial success
         
-        logging.info(f"Bulk deletion completed: {successful_deletions}/{len(identifiers)} successful")
+        logging.info(f"Bulk deletion completed: {successful_deletions}/{len(person_ids)} successful")
         
         return jsonify(response), status_code
         
@@ -1391,7 +1428,7 @@ if __name__ == '__main__':
     print("  GET    /list_persons - List all persons in database")
     print("  DELETE /flush_database - Delete all faces from database")
     print("  DELETE /delete_person/<identifier> - Delete specific person (legacy)")
-    print("  DELETE /delete_record/<identifier> - Delete specific person from DB and Spaces")
-    print("  POST   /delete_records - Bulk delete multiple persons from DB and Spaces")
+    print("  DELETE /delete_record/<person_id> - Delete specific person from DB and Spaces (by ID)")
+    print("  POST   /delete_records - Bulk delete multiple persons from DB and Spaces (by IDs)")
     
     app.run(host='0.0.0.0', port=API_PORT, debug=False)
